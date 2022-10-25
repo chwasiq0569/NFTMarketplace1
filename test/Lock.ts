@@ -2,19 +2,32 @@ import { time, loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
 import { ethers } from "hardhat";
+import { Contract } from 'ethers';
+import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 
 describe("NFTMarket", function () {
-  it("Should do something", async function () {
-    const NFTMarket = await ethers.getContractFactory('NFTMarket');
-    const nftMarket = await NFTMarket.deploy();
-    await nftMarket.deployed();
+  let nftMarket: Contract;
+  let signers: SignerWithAddress[];
 
-    const tokenURI = 'https://some-token.uri/';
+  before(async() => {
+    const NFTMarket = await ethers.getContractFactory('NFTMarket');
+    nftMarket = await NFTMarket.deploy();
+    await nftMarket.deployed();
+    signers = await ethers.getSigners();
+  })
+
+  const createNFT = async (tokenURI: string) => {
     const transaction = await nftMarket.createNFT(tokenURI);
     const receipt = await transaction.wait()
     const tokenID = receipt.events[0].args.tokenId;
+    return tokenID;
+  }
+
+  it("Should do something", async function () {
+    const tokenURI = 'https://some-token.uri/';
+    const tokenID = await createNFT(tokenURI);
+
     const mintedTokenURI = await nftMarket.tokenURI(tokenID)
-    
     expect(mintedTokenURI).to.equal(tokenURI);
 
     const ownerAddress = await nftMarket.ownerOf(tokenID);
@@ -22,6 +35,36 @@ describe("NFTMarket", function () {
     const currentAddress = await signers[0].getAddress();
     expect(ownerAddress).to.equal(currentAddress);
   });
+
+  describe('listNFT', () => {
+    const tokenURI = 'some token uri';
+    it("Should revert if price is zero", async function () {
+      const tokenURI = 'Some token uri';
+      const tokenID = await createNFT(tokenURI);
+      const transaction = nftMarket.listNFT(tokenID, 0);
+      await expect(transaction).to.be.revertedWith("NFT Market: price must be greater than 0")
+    })
+
+    it("Should revert if not called by owner", async function () {
+      const tokenID = await createNFT(tokenURI);
+      const transaction = nftMarket.connect(signers[1]).listNFT(tokenID, 12);
+      await expect(transaction).to.be.revertedWith("ERC721: approve caller is not token owner nor approved for all"); 
+    });
+
+    it("should list the token for sale if all requirements are met", async () => {
+      const price = 123;
+      const tokenID = await createNFT(tokenURI);
+      const transaction = await nftMarket.listNFT(tokenID, price);
+      const receipt = await transaction.wait();
+      const args = receipt.events[3].args;
+      expect(args.tokenID).to.equal(tokenID);
+      expect(args.to).to.equal(nftMarket.address);
+      expect(args.tokenURI).to.equal("");
+      expect(args.price).to.equal(price);
+    });
+
+  })
+  
 });
 
 describe("Lock", function () {

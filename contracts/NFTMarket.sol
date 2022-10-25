@@ -19,9 +19,7 @@ contract NFTMarket is ERC721URIStorage, Ownable {
 
     event NFTTransfer(uint256 tokenID, address to, string tokenURI, uint256 price);
 
-    constructor() ERC721("Wasiq's NFT", "WNFT") { 
-        _owner = msg.sender;
-    }
+    constructor() ERC721("Wasiq's NFT", "WNFT") { }
 
     function createNFT(string calldata tokenURI) public  {
         _tokenIDs.increment();
