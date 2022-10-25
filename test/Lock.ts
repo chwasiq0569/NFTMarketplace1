@@ -23,9 +23,11 @@ describe("NFTMarket", function () {
     return tokenID;
   }
 
-  it("Should do something", async function () {
+  it("should create an NFT with the correct owner and tokenURI", async function () {
     const tokenURI = 'https://some-token.uri/';
-    const tokenID = await createNFT(tokenURI);
+    const transaction = await nftMarket.createNFT(tokenURI);
+    const receipt = await transaction.wait()
+    const tokenID = receipt.events[0].args.tokenId;
 
     const mintedTokenURI = await nftMarket.tokenURI(tokenID)
     expect(mintedTokenURI).to.equal(tokenURI);
@@ -34,6 +36,12 @@ describe("NFTMarket", function () {
     const signers = await ethers.getSigners();
     const currentAddress = await signers[0].getAddress();
     expect(ownerAddress).to.equal(currentAddress);
+
+    const args = receipt.events[1].args;
+    expect(args.tokenID).to.equal(tokenID);
+    expect(args.to).to.equal(ownerAddress);
+    expect(args.tokenURI).to.equal(tokenURI);
+    expect(args.price).to.equal(0);
   });
 
   describe('listNFT', () => {
@@ -62,9 +70,10 @@ describe("NFTMarket", function () {
       expect(args.tokenURI).to.equal("");
       expect(args.price).to.equal(price);
     });
-
   })
   
+
+
 });
 
 describe("Lock", function () {
