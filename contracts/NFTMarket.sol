@@ -2,18 +2,53 @@ pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
+struct NFTListing {
+    uint256 price;
+    address seller;
+}
 
 contract NFTMarket is ERC721URIStorage {
     using Counters for Counters.Counter;
+    using SafeMath for uint256;
     Counters.Counter private _tokenIDs;
+    mapping(uint256 => NFTListing) private _listings;
 
     constructor() ERC721("Wasiq's NFT", "WNFT") {}
 
-    function createNFT(string calldata tokenURI) public returns(uint256) {
+    function createNFT(string calldata tokenURI) public  {
         _tokenIDs.increment();
         uint256 currentID = _tokenIDs.current();
         _safeMint(msg.sender, currentID);
         _setTokenURI(currentID, tokenURI);
-        return currentID;
+    }
+    
+    function listNFT(uint256 tokenID, uint256 price) public {
+        require(price > 0, "NFT Market: price must be greater than 0");
+        approve(address(this), tokenID);
+        transferFrom(msg.sender, address(this), tokenID);
+        _listings[tokenID] = NFTListing(price, msg.sender);
+    }
+
+    function buyNFT(uint256 tokenID) public payable {
+        NFTListing memory listing = _listings[tokenID];
+        require(listing.price > 0, "NFTMarket: nft not listed for sale");
+        require(msg.value == listing.price, "NFTMarket: incorrect price");
+        transferFrom(address(this), msg.sender, tokenID);
+        payable(msg.sender).transfer(listing.price.mul(95).div(100));
+    }
+
+    function cancelListing(uint256 tokenID) public {
+        NFTListing memory listing = _listings[tokenID];
+        require(listing.price > 0, "NFTMarket: nft not listed for sale");
+        require(listing.seller == msg.sender, "NFTMarket: you are not the owner");
+        transferFrom(address(this), msg.sender, tokenID);
+        clearListing(tokenID);
+    }
+
+    function clearListing(uint256 tokenID) private {
+        _listings[tokenID].price = 0;
+        _listings[tokenID].seller = address(0);
     }
 }
