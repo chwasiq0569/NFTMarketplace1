@@ -23,6 +23,13 @@ describe("NFTMarket", function () {
     return tokenID;
   }
 
+  const createAndListNFT = async (price: number) => {
+    const tokenID = await createNFT('some token uri');
+    const transaction = await nftMarket.listNFT(tokenID, price);
+    await transaction.wait();
+    return tokenID;
+  }
+
   it("should create an NFT with the correct owner and tokenURI", async function () {
     const tokenURI = 'https://some-token.uri/';
     const transaction = await nftMarket.createNFT(tokenURI);
@@ -72,6 +79,57 @@ describe("NFTMarket", function () {
     });
   })
   
+  describe("buyNFT", () => {
+      it("should never if NFT is not listed for sale", () => {
+        const transaction = nftMarket.buyNFT(9999);
+        expect(transaction).to.be.revertedWith('NFT Market: nft not listed for sale');
+      });
+
+      it("should revert if the amount of wei send is not equal to the NFT price", async () => {
+        const tokenID = await createAndListNFT(123);
+        const transaction = nftMarket.buyNFT(tokenID, {value: 123});
+        expect(transaction).to.be.revertedWith('NFT Market: incorrect price');
+      });
+
+      it("should transfer ownership to the buyer and send the price to the seller", async () => {
+        const price = 123;
+        const sellerProfit = Math.floor((price * 95) / 100);
+        const fee = price - sellerProfit;
+        const initialContractBalance = await nftMarket.provider.getBalance(
+          nftMarket.address
+        );
+        const tokenID = await createAndListNFT(price);
+        await new Promise((r) => setTimeout(r, 100));
+        const oldSellerBalance = await signers[0].getBalance();
+        const transaction = await nftMarket
+          .connect(signers[1])
+          .buyNFT(tokenID, { value: price });
+        const receipt = await transaction.wait();
+        // 95% of the price was added to the seller balance
+        await new Promise((r) => setTimeout(r, 100));
+        const newSellerBalance = await signers[0].getBalance();
+        const diff = newSellerBalance.sub(oldSellerBalance);
+        expect(diff).to.equal(sellerProfit);
+        // 5% of the price was kept in the contract balance
+        const newContractBalance = await nftMarket.provider.getBalance(
+          nftMarket.address
+        );
+        const contractBalanceDiff = newContractBalance.sub(
+          initialContractBalance
+        );
+        expect(contractBalanceDiff).to.equal(fee);
+        // NFT ownership was transferred to the buyer
+        const ownerAddress = await nftMarket.ownerOf(tokenID);
+        expect(ownerAddress).to.equal(signers[1].address);
+        // NFTTransfer event has the correct arguments
+        const args = receipt.events[2].args;
+        expect(args.tokenID).to.equal(tokenID);
+        expect(args.from).to.equal(nftMarket.address);
+        expect(args.to).to.equal(signers[1].address);
+        expect(args.tokenURI).to.equal("");
+        expect(args.price).to.equal(0);
+    });
+  })
 
 
 });
