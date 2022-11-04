@@ -131,6 +131,70 @@ describe("NFTMarket", function () {
     });
   })
 
+  describe('cancellistings', () => {
+    it("should revert if NFT not listed for sale", async () => {
+      const transaction = nftMarket.cancelListing(9999);
+      await expect(transaction).to.be.revertedWith(
+        "NFTMarket: nft not listed for sale"
+      );
+    })
+
+    it("should revert if the caller is not seller of listing", async () => {
+      const tokenID = await createAndListNFT(123);
+      const transaction = nftMarket.connect(signers[1]).cancelListing(tokenID);
+      expect(transaction).to.be.revertedWith(
+        "NFTMarket: your're not the seller"
+      );
+    })
+
+    it("should transfer the ownership back to the seller if all requirements are met", async () => {
+      const tokenID = await createAndListNFT(123);
+      const transaction = await nftMarket.cancelListing(tokenID);
+      const receipt = await transaction.wait();
+
+      const ownerAddress = await nftMarket.ownerOf(tokenID);
+      expect(ownerAddress).to.equal(signers[0].address);
+
+      const args = receipt.events[2].args;
+      expect(args.tokenID).to.equal(tokenID);
+      expect(args.to).to.equal(signers[0].address);
+      expect(args.tokenURI).to.equal("");
+      expect(args.price).to.equal(0);
+    })
+
+  });
+
+  describe("withdrawFunds", () => {
+    it("should revert if called by a signer other than the owner", async () => {
+      const transaction = nftMarket.connect(signers[1]).withdrawFunds();
+      await expect(transaction).to.be.revertedWith(
+        "Ownable: caller is not the owner"
+      );
+    });
+
+    it("should transfer all funds from the contract balance to the owner's", async () => {
+      const contractBalance = await nftMarket.provider.getBalance(
+        nftMarket.address
+      );
+      const initialOwnerBalance = await signers[0].getBalance();
+      const transaction = await nftMarket.withdrawFunds();
+      const receipt = await transaction.wait();
+
+      await new Promise((r) => setTimeout(r, 100));
+      const newOwnerBalance = await signers[0].getBalance();
+
+      const gas = receipt.gasUsed.mul(receipt.effectiveGasPrice);
+      const transferred = newOwnerBalance.add(gas).sub(initialOwnerBalance);
+      expect(transferred).to.equal(contractBalance);
+    });
+
+    it("should revert if contract balance is zero", async () => {
+      const transaction = nftMarket.withdrawFunds();
+      await expect(transaction).to.be.revertedWith(
+        "NFTMarket: balance is zero"
+      );
+    });
+  });
 
 });
 
